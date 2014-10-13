@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name = "gmail-client",
-    version = "0.0.3",
+    version = "0.0.4",
     author = "Wilberto Morales",
     author_email = "wilbertomorales777@gmail.com",
     description = ("A Pythonic interface for Google Mail. Based of https://github.com/charlierguo/gmai"),
