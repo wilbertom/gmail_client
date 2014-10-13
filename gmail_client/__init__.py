@@ -155,7 +155,7 @@ Heavily inspired by `Kriss "nu7hatch" Kowalik's GMail for Ruby library <https://
 """
 
 __title__ = 'gmail'
-__version__ = '0.1'
+__version__ = '0.0.4'
 __author__ = 'Wilberto Morales'
 __build__ = 0x0001
 __license__ = 'Apache 2.0'
