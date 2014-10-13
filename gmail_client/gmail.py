@@ -153,7 +153,7 @@ class Gmail():
             raw_message = results[index]
             if re.search(r'UID (\d+)', raw_message[0]):
                 uid = re.search(r'UID (\d+)', raw_message[0]).groups(1)[0]
-                messages[uid].parse(raw_message)
+                messages[uid]._parse(raw_message)
 
         return messages
 
