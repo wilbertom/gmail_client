@@ -95,11 +95,16 @@ Working with emails
     unread[0].fetch()
     print unread[0].body
 
+Also calling `Message.fetch` twice is lazy in order to save requests. You can force fetch:
+::
+
+    unread.forced_fetch()
+
 Mark news past a certain date as read and archive it:
 ::
     emails = g.inbox().mail(before=datetime.date(2013, 4, 18), sender="news@nbcnews.com")
     for email in emails:
-        email.read() # can also unread(), delete(), spam(), or star()
+        email.read()
         email.archive()
 
 Delete all emails from a certain person:
@@ -122,14 +127,6 @@ Download message attachments:
         print 'Saving attachment: ' + attachment.name
         print 'Size: ' + str(attachment.size) + ' KB'
         attachment.save('attachments/' + attachment.name)
-
-There is also few shortcuts to mark messages quickly:
-::
-    email.read()
-    email.unread()
-    email.spam()
-    email.star()
-    email.unstar()
 
 Roadmap
 *******
