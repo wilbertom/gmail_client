@@ -23,6 +23,27 @@ def parse_flags(headers):
 
     return set(map(_parse_flag, ParseFlags(headers)))
 
+def parse_headers(message):
+    """
+    We must parse the headers because Python's Message class hides a
+    dictionary type object but doesn't implement all of it's methods
+    like copy or iteritems.
+
+    """
+    return {k:v for k, v in message.items()}
+
+def parse_labels(headers):
+    if re.search(r'X-GM-LABELS \(([^\)]+)\)', headers):
+        labels = re.search(r'X-GM-LABELS \(([^\)]+)\)', headers).groups(1)[0].split(' ')
+        return map(lambda l: l.replace('"', '').decode("string_escape"), labels)
+    else:
+        return list()
+
+def parse_subject(encoded_subject):
+    dh = decode_header(encoded_subject)
+    default_charset = 'ASCII'
+    return ''.join([ unicode(t[0], t[1] or default_charset) for t in dh ])
+
 
 class Message(object):
 
@@ -39,9 +60,6 @@ class Message(object):
         self.body = None
         self.html = None
 
-        self.partitioned_body = []
-        self.partitioned_html = []
-
         self.to = None
         self.fr = None
         self.cc = None
@@ -49,8 +67,8 @@ class Message(object):
 
         self.sent_at = None
 
-        self._flags = set()
-        self.labels = []
+        self._flags = set([])
+        self._labels = set([])
 
         self.thread_id = None
         self.thread = []
@@ -78,6 +96,13 @@ class Message(object):
         self._flags = set(fs)
 
     @property
+    def labels(self): return self._labels
+
+    @labels.setter
+    def labels(self, fs):
+        self._labels = set(fs)
+
+    @property
     def is_read(self): return 'Seen' in self.flags
 
     @property
@@ -95,96 +120,72 @@ class Message(object):
     def star(self): return self.add_flag('Flagged')
     def un_star(self): return self.remove_flag('Flagged')
 
-    def delete(self):
-
-        trash = '[Gmail]/Trash' if '[Gmail]/Trash' in self.gmail.labels() else '[Gmail]/Bin'
-        if self.mailbox.name not in ['[Gmail]/Bin', '[Gmail]/Trash']:
-            self.move_to(trash)
-
-        return self.add_flag('Deleted')
-
-    def has_label(self, label):
-        full_label = '%s' % label
-        return (full_label in self.labels)
-
-    def add_label(self, label):
-        full_label = '%s' % label
-        self.gmail.imap.uid('STORE', self.uid, '+X-GM-LABELS', full_label)
-        if full_label not in self.labels: self.labels.append(full_label)
-
-    def remove_label(self, label):
-        full_label = '%s' % label
-        self.gmail.imap.uid('STORE', self.uid, '-X-GM-LABELS', full_label)
-        if full_label in self.labels: self.labels.remove(full_label)
-
     def move_to(self, name):
         self.gmail.copy(self.uid, name, self.mailbox.name)
         if name not in ['[Gmail]/Bin', '[Gmail]/Trash']:
             self.delete()
 
+    def delete(self):
+
+        if self.mailbox.name not in ['[Gmail]/Bin', '[Gmail]/Trash']:
+            trash = '[Gmail]/Trash' if '[Gmail]/Trash' in self.gmail.labels() else '[Gmail]/Bin'
+            self.move_to(trash)
+
+        return self.add_flag('Deleted')
+
+    def has_label(self, label): return label in self.labels
+
+    def add_label(self, label):
+        if label not in self.labels:
+            self.gmail.imap.uid('STORE', self.uid, '+X-GM-LABELS', label)
+            self.labels.add(label)
+        return self
+
+    def remove_label(self, label):
+        if label in self.labels:
+            self.gmail.imap.uid('STORE', self.uid, '-X-GM-LABELS', label)
+            self.labels.remove(label)
+        return self
+
     def archive(self):
         self.move_to('[Gmail]/All Mail')
+        return self
 
-    def parse_headers(self, message):
-        hdrs = {}
-        for hdr in message.keys():
-            hdrs[hdr] = message[hdr]
-        return hdrs
+    def _parse(self, raw_message):
 
-    def parse_labels(self, headers):
-        if re.search(r'X-GM-LABELS \(([^\)]+)\)', headers):
-            labels = re.search(r'X-GM-LABELS \(([^\)]+)\)', headers).groups(1)[0].split(' ')
-            return map(lambda l: l.replace('"', '').decode("string_escape"), labels)
-        else:
-            return list()
-
-    def parse_subject(self, encoded_subject):
-        dh = decode_header(encoded_subject)
-        default_charset = 'ASCII'
-        return ''.join([ unicode(t[0], t[1] or default_charset) for t in dh ])
-
-    def parse(self, raw_message):
         raw_headers = raw_message[0]
         raw_email = raw_message[1]
 
         self.message = email.message_from_string(raw_email)
-        self.headers = self.parse_headers(self.message)
+        self.headers = parse_headers(self.message)
 
         self.to = self.message['to']
         self.fr = self.message['from']
         self.delivered_to = self.message['delivered_to']
 
-        self.subject = self.parse_subject(self.message['subject'])
+        self.subject = parse_subject(self.message['subject'])
 
         if self.message.is_multipart():
 
             for part in self.message.walk():
 
-                # since we're already walking the tree, we only 
-                # care about leaf nodes; ignore everything else
                 if not part.is_multipart():
 
                     content_disposition = part.get('Content-Disposition', None)
-                    if content_disposition:
+
+                    if content_disposition is not None and content_disposition == 'attachment':
                         # if it has a content disposition, it should
                         # be an attachment of some kind 
                         self.attachments.append(Attachment(part))
+
                     else:
                         content = part.get_payload(decode=True)
                         content_type = part.get_content_type()
-                        if content_type == "text/plain":
-                            self.partitioned_body.append(content)
-                        elif content_type == "text/html":
-                            self.partitioned_html.append(content)
 
-            # This determines what the body and html of the
-            # email appears to be to our client. Because of 
-            # multipart content, there can be multiple values
-            # for each; here we take the longest value, which 
-            # serves to drop the empty HTML that gets created
-            # with attachments
-            self.body = sorted(self.partitioned_body, key=len, reverse=True)[0]
-            self.html = sorted(self.partitioned_html, key=len, reverse=True)[0]
+                        if content_type == "text/plain":
+                            self.body = content
+                        elif content_type == "text/html":
+                            self.html = content
 
         elif self.message.get_content_maintype() == "text":
             self.body = self.message.get_payload()
@@ -193,21 +194,21 @@ class Message(object):
 
         self.flags = parse_flags(raw_headers)
 
-        self.labels = self.parse_labels(raw_headers)
+        self.labels = parse_labels(raw_headers)
 
         if re.search(r'X-GM-THRID (\d+)', raw_headers):
             self.thread_id = re.search(r'X-GM-THRID (\d+)', raw_headers).groups(1)[0]
         if re.search(r'X-GM-MSGID (\d+)', raw_headers):
             self.message_id = re.search(r'X-GM-MSGID (\d+)', raw_headers).groups(1)[0]
-        
 
-    def fetch(self):
-        if not self.message:
-            response, results = self.gmail.imap.uid('FETCH', self.uid, '(BODY.PEEK[] FLAGS X-GM-THRID X-GM-MSGID X-GM-LABELS)')
+    def fetch(self): return self.message if self.message else self.forced_fetch()
 
-            self.parse(results[0])
+    def forced_fetch(self):
+        _, results = self.gmail.imap.uid('FETCH', self.uid, '(BODY.PEEK[] FLAGS X-GM-THRID X-GM-MSGID X-GM-LABELS)')
+        self._parse(results[0])
 
         return self.message
+
 
     # returns a list of fetched messages (both sent and received) in chronological order
     def fetch_thread(self):
@@ -240,7 +241,11 @@ class Message(object):
         return sorted(dict(received_messages.items() + sent_messages.items()).values(), key=lambda m: m.sent_at)
 
 
-class Attachment:
+class Attachment(object):
+    """
+    Attachments are files sent in the email.
+
+    """
 
     def __init__(self, attachment):
         self.name = decode_header(attachment.get_filename())[0][0]
@@ -262,5 +267,5 @@ class Attachment:
         with open(path, 'wb') as f:
             f.write(self.payload)
 
-
+        return path
 
