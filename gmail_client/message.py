@@ -84,8 +84,10 @@ class Message(object):
         return self
 
     def remove_flag(self, flag):
-        self.gmail.imap.uid('STORE', self.uid, '-FLAGS', '\\{0}'.format(flag))
-        if flag in self.flags: self._flags.remove(flag)
+        if flag in self.flags:
+            self.gmail.imap.uid('STORE', self.uid, '-FLAGS', '\\{0}'.format(flag))
+            self._flags.remove(flag)
+
         return self
 
     @property
