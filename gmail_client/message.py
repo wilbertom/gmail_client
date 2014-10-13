@@ -6,7 +6,25 @@ import os
 from email.header import decode_header
 from imaplib import ParseFlags
 
-class Message():
+
+def parse_flags(headers):
+    """
+    Parses flags from headers using Python's `ParseFlags`.
+
+    It drops all the \ in all the flags if it exists, to
+    hide the details of the protocol.
+
+    """
+    def _parse_flag(f):
+        if f.startswith('\\'):
+            return f[1:]
+        else:
+            return f
+
+    return set(map(_parse_flag, ParseFlags(headers)))
+
+
+class Message(object):
 
 
     def __init__(self, mailbox, uid):
@@ -31,7 +49,7 @@ class Message():
 
         self.sent_at = None
 
-        self.flags = []
+        self._flags = set()
         self.labels = []
 
         self.thread_id = None
@@ -39,37 +57,51 @@ class Message():
         self.message_id = None
  
         self.attachments = []
-        
 
+    def add_flag(self, flag):
+        if flag not in self.flags:
+            self.gmail.imap.uid('STORE', self.uid, '+FLAGS', '\\{0}'.format(flag))
+            self._flags.add(flag)
 
-    def is_read(self):
-        return ('\\Seen' in self.flags)
+        return self
 
-    def read(self):
-        flag = '\\Seen'
-        self.gmail.imap.uid('STORE', self.uid, '+FLAGS', flag)
-        if flag not in self.flags: self.flags.append(flag)
+    def remove_flag(self, flag):
+        self.gmail.imap.uid('STORE', self.uid, '-FLAGS', '\\{0}'.format(flag))
+        if flag in self.flags: self._flags.remove(flag)
+        return self
 
-    def unread(self):
-        flag = '\\Seen'
-        self.gmail.imap.uid('STORE', self.uid, '-FLAGS', flag)
-        if flag in self.flags: self.flags.remove(flag)
+    @property
+    def flags(self): return self._flags
 
-    def is_starred(self):
-        return ('\\Flagged' in self.flags)
+    @flags.setter
+    def flags(self, fs):
+        self._flags = set(fs)
 
-    def star(self):
-        flag = '\\Flagged'
-        self.gmail.imap.uid('STORE', self.uid, '+FLAGS', flag)
-        if flag not in self.flags: self.flags.append(flag)
+    @property
+    def is_read(self): return 'Seen' in self.flags
 
-    def un_star(self):
-        flag = '\\Flagged'
-        self.gmail.imap.uid('STORE', self.uid, '-FLAGS', flag)
-        if flag in self.flags: self.flags.remove(flag)
+    @property
+    def is_starred(self): return 'Flagged' in self.flags
 
-    def is_draft(self):
-        return ('\\Draft' in self.flags)
+    @property
+    def is_draft(self): return 'Draft' in self.flags
+
+    @property
+    def is_deleted(self): return 'Deleted' in self.flags
+
+    def mark_read(self): return self.add_flag('Seen')
+    def mark_unread(self): return self.remove_flag('Seen')
+
+    def star(self): return self.add_flag('Flagged')
+    def un_star(self): return self.remove_flag('Flagged')
+
+    def delete(self):
+
+        trash = '[Gmail]/Trash' if '[Gmail]/Trash' in self.gmail.labels() else '[Gmail]/Bin'
+        if self.mailbox.name not in ['[Gmail]/Bin', '[Gmail]/Trash']:
+            self.move_to(trash)
+
+        return self.add_flag('Deleted')
 
     def has_label(self, label):
         full_label = '%s' % label
@@ -85,25 +117,10 @@ class Message():
         self.gmail.imap.uid('STORE', self.uid, '-X-GM-LABELS', full_label)
         if full_label in self.labels: self.labels.remove(full_label)
 
-
-    def is_deleted(self):
-        return ('\\Deleted' in self.flags)
-
-    def delete(self):
-        flag = '\\Deleted'
-        self.gmail.imap.uid('STORE', self.uid, '+FLAGS', flag)
-        if flag not in self.flags: self.flags.append(flag)
-
-        trash = '[Gmail]/Trash' if '[Gmail]/Trash' in self.gmail.labels() else '[Gmail]/Bin'
-        if self.mailbox.name not in ['[Gmail]/Bin', '[Gmail]/Trash']:
-            self.move_to(trash)
-
     def move_to(self, name):
         self.gmail.copy(self.uid, name, self.mailbox.name)
         if name not in ['[Gmail]/Bin', '[Gmail]/Trash']:
             self.delete()
-
-
 
     def archive(self):
         self.move_to('[Gmail]/All Mail')
@@ -113,10 +130,6 @@ class Message():
         for hdr in message.keys():
             hdrs[hdr] = message[hdr]
         return hdrs
-
-    def parse_flags(self, headers):
-        return list(ParseFlags(headers))
-        # flags = re.search(r'FLAGS \(([^\)]*)\)', headers).groups(1)[0].split(' ')
 
     def parse_labels(self, headers):
         if re.search(r'X-GM-LABELS \(([^\)]+)\)', headers):
@@ -178,7 +191,7 @@ class Message():
 
         self.sent_at = datetime.datetime.fromtimestamp(time.mktime(email.utils.parsedate_tz(self.message['date'])[:9]))
 
-        self.flags = self.parse_flags(raw_headers)
+        self.flags = parse_flags(raw_headers)
 
         self.labels = self.parse_labels(raw_headers)
 
