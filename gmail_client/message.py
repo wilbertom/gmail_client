@@ -30,7 +30,12 @@ def parse_headers(message):
     like copy or iteritems.
 
     """
-    return {k:v for k, v in message.items()}
+    d = {}
+
+    for k, v in message.items():
+        d[k] = v
+        
+    return d
 
 def parse_labels(headers):
     if re.search(r'X-GM-LABELS \(([^\)]+)\)', headers):
