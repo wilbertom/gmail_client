@@ -34,7 +34,7 @@ def parse_headers(message):
 
     for k, v in message.items():
         d[k] = v
-        
+
     return d
 
 def parse_labels(headers):
@@ -48,6 +48,35 @@ def parse_subject(encoded_subject):
     dh = decode_header(encoded_subject)
     default_charset = 'ASCII'
     return ''.join([ unicode(t[0], t[1] or default_charset) for t in dh ])
+
+
+class Attachment(object):
+    """
+    Attachments are files sent in the email.
+
+    """
+
+    def __init__(self, attachment):
+        self.name = decode_header(attachment.get_filename())[0][0]
+
+        # Raw file data
+        self.payload = attachment.get_payload(decode=True)
+
+        # Filesize in kilobytes
+        self.size = int(round(len(self.payload)/1000.0))
+
+    def save(self, path=None):
+        if path is None:
+            # Save as name of attachment if there is no path specified
+            path = self.name
+        elif os.path.isdir(path):
+            # If the path is a directory, save as name of attachment in that directory
+            path = os.path.join(path, self.name)
+
+        with open(path, 'wb') as f:
+            f.write(self.payload)
+
+        return path
 
 
 class Message(object):
@@ -180,7 +209,7 @@ class Message(object):
 
                     content_disposition = part.get('Content-Disposition', None)
 
-                    if content_disposition is not None and content_disposition == 'attachment':
+                    if content_disposition is not None:
                         # if it has a content disposition, it should
                         # be an attachment of some kind 
                         self.attachments.append(Attachment(part))
@@ -195,7 +224,12 @@ class Message(object):
                             self.html = content
 
         elif self.message.get_content_maintype() == "text":
+
             self.body = self.message.get_payload()
+
+            # Parse attachments into attachment objects array for this message
+            self.attachments = [Attachment(attachment) for attachment in self.message._payload if not isinstance(attachment, basestring) and attachment.get('Content-Disposition', None) is not None]
+
 
         self.sent_at = datetime.datetime.fromtimestamp(time.mktime(email.utils.parsedate_tz(self.message['date'])[:9]))
 
@@ -247,32 +281,4 @@ class Message(object):
         # combine and sort sent and received messages
         return sorted(dict(received_messages.items() + sent_messages.items()).values(), key=lambda m: m.sent_at)
 
-
-class Attachment(object):
-    """
-    Attachments are files sent in the email.
-
-    """
-
-    def __init__(self, attachment):
-        self.name = decode_header(attachment.get_filename())[0][0]
-
-        # Raw file data
-        self.payload = attachment.get_payload(decode=True)
-
-        # Filesize in kilobytes
-        self.size = int(round(len(self.payload)/1000.0))
-
-    def save(self, path=None):
-        if path is None:
-            # Save as name of attachment if there is no path specified
-            path = self.name
-        elif os.path.isdir(path):
-            # If the path is a directory, save as name of attachment in that directory
-            path = os.path.join(path, self.name)
-
-        with open(path, 'wb') as f:
-            f.write(self.payload)
-
-        return path
 
