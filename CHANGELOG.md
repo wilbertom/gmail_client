@@ -15,3 +15,8 @@
 7. Added `Message.forced_fetch`
 8. `Attachment.save` now returns the path where it was saved
 
+0.0.7
+
+1. New email parser, with nested fetching of attachments
+2. Bug fixes
+3. `Message.has_attachments` property added

@@ -297,6 +297,7 @@ class Message(object):
 
     def fetch(self): return self.message if self.message else self.forced_fetch()
 
+    @property
     def has_attachments(self):
         return len(self.attachments) > 0
 
