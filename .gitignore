@@ -26,3 +26,5 @@ build/
 dist/
 gmail_client.egg-info/
 docs/build
+
+data/

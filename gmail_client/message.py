@@ -44,10 +44,9 @@ def parse_labels(headers):
     else:
         return list()
 
-def parse_subject(encoded_subject):
-    dh = decode_header(encoded_subject)
-    default_charset = 'ASCII'
-    return ''.join([ unicode(t[0], t[1] or default_charset) for t in dh ])
+def parse_subject(encoded_header):
+    dh = encoded_header.encode('UTF-8')
+    return dh
 
 
 class Attachment(object):
@@ -56,14 +55,12 @@ class Attachment(object):
 
     """
 
-    def __init__(self, attachment):
-        self.name = decode_header(attachment.get_filename())[0][0]
+    def __init__(self, name, content_type, content):
+        self.name = name
+        self.content_type = content_type
+        self.content = content
+        self.size = len(self.content)
 
-        # Raw file data
-        self.payload = attachment.get_payload(decode=True)
-
-        # Filesize in kilobytes
-        self.size = int(round(len(self.payload)/1000.0))
 
     def save(self, path=None):
         if path is None:
@@ -74,9 +71,92 @@ class Attachment(object):
             path = os.path.join(path, self.name)
 
         with open(path, 'wb') as f:
-            f.write(self.payload)
+            f.write(self.content)
 
         return path
+
+
+class ParsedEmail(object):
+
+    def __init__(self, message):
+        self._body = []
+        self._html = []
+        self._attachments = []
+
+        self.parse(message)
+
+
+    @staticmethod
+    def is_attachment(p):
+        content_disposition = p.get("Content-Disposition", None)
+
+        if content_disposition is not None:
+            dispositions = content_disposition.strip().split(";")
+
+            if dispositions[0].lower() in ["attachment", "inline"]:
+                return True
+            else:
+                return False
+        else:
+            return False
+
+    @staticmethod
+    def is_multi_part(p):
+        return 'multipart' == p.get_content_maintype()
+
+    @staticmethod
+    def is_html(p):
+        return p.get_content_type() == 'text/html'
+
+    @staticmethod
+    def is_text(p):
+        return p.get_content_type() == 'text/plain'
+
+    def parse(self, mail):
+        if self.is_multi_part(mail):
+            for part in mail.walk():
+                self.parse_message_part(part)
+
+        else:
+            self.parse_message_part(mail)
+
+    def parse_message_part(self, p):
+        if self.is_attachment(p):
+            return self.parse_attachment(p)
+        else:
+            return self.parse_message(p)
+
+    def parse_attachment(self, message_part):
+        a = Attachment(decode_header(message_part.get_filename())[0][0],
+                       message_part.get_content_type(),
+                       message_part.get_payload(decode=True))
+
+        self._attachments.append(a)
+        return self
+
+    def parse_message(self, p):
+        if self.is_html(p):
+            self._html.append(p)
+        elif self.is_text(p):
+            self._body.append(p)
+
+    def _get_content(self, l):
+        if len(l) != 0:
+            return l[-1]
+        else:
+            return None
+
+    @property
+    def html(self):
+        return self._get_content(self._html)
+
+    @property
+    def txt(self):
+        return self._get_content(self._body)
+
+    @property
+    def attachments(self):
+        return self._attachments
 
 
 class Message(object):
@@ -195,46 +275,19 @@ class Message(object):
         self.message = email.message_from_string(raw_email)
         self.headers = parse_headers(self.message)
 
+        self.subject = parse_subject(self.message['subject'])
+        self.sent_at = datetime.datetime.fromtimestamp(time.mktime(email.utils.parsedate_tz(self.message['date'])[:9]))
+
         self.to = self.message['to']
         self.fr = self.message['from']
         self.delivered_to = self.message['delivered_to']
 
-        self.subject = parse_subject(self.message['subject'])
-
-        if self.message.is_multipart():
-
-            for part in self.message.walk():
-
-                if not part.is_multipart():
-
-                    content_disposition = part.get('Content-Disposition', None)
-
-                    if content_disposition is not None:
-                        # if it has a content disposition, it should
-                        # be an attachment of some kind 
-                        self.attachments.append(Attachment(part))
-
-                    else:
-                        content = part.get_payload(decode=True)
-                        content_type = part.get_content_type()
-
-                        if content_type == "text/plain":
-                            self.body = content
-                        elif content_type == "text/html":
-                            self.html = content
-
-        elif self.message.get_content_maintype() == "text":
-
-            self.body = self.message.get_payload()
-
-            # Parse attachments into attachment objects array for this message
-            self.attachments = [Attachment(attachment) for attachment in self.message._payload if not isinstance(attachment, basestring) and attachment.get('Content-Disposition', None) is not None]
-
-
-        self.sent_at = datetime.datetime.fromtimestamp(time.mktime(email.utils.parsedate_tz(self.message['date'])[:9]))
+        parsed_email = ParsedEmail(self.message)
+        self.body = parsed_email.txt
+        self.html = parsed_email.html
+        self.attachments = parsed_email.attachments
 
         self.flags = parse_flags(raw_headers)
-
         self.labels = parse_labels(raw_headers)
 
         if re.search(r'X-GM-THRID (\d+)', raw_headers):
