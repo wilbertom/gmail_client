@@ -45,7 +45,12 @@ def parse_labels(headers):
         return list()
 
 def parse_subject(encoded_header):
-    dh = encoded_header.encode('UTF-8')
+
+    if encoded_header is not None:
+        dh = encoded_header.encode('UTF-8')
+    else:
+        dh = ''
+
     return dh
 
 
@@ -59,7 +64,7 @@ class Attachment(object):
         self.name = name
         self.content_type = content_type
         self.content = content
-        self.size = len(self.content)
+        self.size = 0 if content is None else len(self.content)
 
 
     def save(self, path=None):
