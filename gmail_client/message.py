@@ -101,10 +101,8 @@ class ParsedEmail(object):
 
             if dispositions[0].lower() in ["attachment", "inline"]:
                 return True
-            else:
-                return False
-        else:
-            return False
+        
+        return False
 
     @staticmethod
     def is_multi_part(p):
