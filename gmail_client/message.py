@@ -94,16 +94,15 @@ class ParsedEmail(object):
     @staticmethod
     def is_attachment(p):
         content_disposition = p.get("Content-Disposition", None)
-
-        if content_disposition is not None:
+        filename = p.get_filename()
+        
+        if filename is not None and content_disposition is not None:
             dispositions = content_disposition.strip().split(";")
 
             if dispositions[0].lower() in ["attachment", "inline"]:
                 return True
-            else:
-                return False
-        else:
-            return False
+        
+        return False
 
     @staticmethod
     def is_multi_part(p):
