@@ -28,7 +28,7 @@ binary_type = str
 PRINTABLE = set(range(0x20, 0x26)) | set(range(0x27, 0x7f))
 
 def encode(s):
-    """Encode a folder name using IMAP modified UTF-7 codecs.
+    """Encode a folder name using IMAP modified UTF-7 encoding.
 
     Despite the function's name, the output is still a unicode string.
     """
@@ -58,7 +58,7 @@ def encode(s):
     return ''.join(r)
 
 def decode(s):
-    """Decode a folder name from IMAP modified UTF-7 codecs to unicode.
+    """Decode a folder name from IMAP modified UTF-7 encoding to unicode.
 
     Despite the function's name, the input may still be a unicode
     string. If the input is bytes, it's first decoded to unicode.
