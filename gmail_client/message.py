@@ -3,8 +3,9 @@ import email
 import re
 import time
 import os
-from email.header import decode_header
 from imaplib import ParseFlags
+
+from gmail_client.codecs import decode_email_header
 
 
 def parse_flags(headers):
@@ -65,7 +66,6 @@ class Attachment(object):
         self.content_type = content_type
         self.content = content
         self.size = 0 if content is None else len(self.content)
-
 
     def save(self, path=None):
         if path is None:
@@ -130,7 +130,7 @@ class ParsedEmail(object):
             return self.parse_message(p)
 
     def parse_attachment(self, message_part):
-        a = Attachment(decode_header(message_part.get_filename())[0][0],
+        a = Attachment(decode_email_header(message_part.get_filename()),
                        message_part.get_content_type(),
                        message_part.get_payload(decode=True))
 
