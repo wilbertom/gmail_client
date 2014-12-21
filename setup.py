@@ -9,7 +9,7 @@ setup(
     license = "MIT",
     keywords = "google gmail client",
     url = "https://github.com/wilbertom/gmail",
-    packages=['gmail_client', 'codecs'],
+    packages=['gmail_client', 'gmail_client.codecs'],
     classifiers=[
         "Topic :: Communications :: Email",
         "License :: OSI Approved :: MIT License",
