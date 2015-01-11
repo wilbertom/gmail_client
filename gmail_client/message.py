@@ -95,12 +95,13 @@ class ParsedEmail(object):
     def is_attachment(p):
         content_disposition = p.get("Content-Disposition", None)
         filename = p.get_filename()
-        
+
+
         if filename is not None \
                 or (content_disposition is not None and
-                    content_disposition.find('attachment')):
+                        content_disposition.find('attachment') > -1):
             return True
-        
+
         return False
 
     @staticmethod
