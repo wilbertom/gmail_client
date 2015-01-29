@@ -146,7 +146,7 @@ class ParsedEmail(object):
 
     def _get_content(self, l):
         if len(l) != 0:
-            return l[-1]
+            return l[-1].get_payload()
         else:
             return None
 
