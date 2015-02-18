@@ -146,9 +146,11 @@ class ParsedEmail(object):
 
     def _get_content(self, l):
         if len(l) != 0:
-            return l[-1].get_payload()
+            # pass decode=True so that quoted printable characters
+            # get interpreted into their unicode counterparts
+            return l[-1].get_payload(decode=True)
         else:
-            return None
+            return ''
 
     @property
     def html(self):
